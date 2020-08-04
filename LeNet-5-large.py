@@ -1,6 +1,8 @@
 import gzip
 import os
 from time import time
+import os.path
+import errno
 
 from six.moves import urllib
 import numpy as np
@@ -54,19 +56,31 @@ class PolyAct(Layer):
         super(PolyAct, self).__init__(**kwargs)
 
     def build(self, input_shape):
-        self.a = self.add_weight('a', shape=(1, 1), initializer="random_normal", trainable=True, )
-        self.b = self.add_weight('b', shape=(1, 1), initializer="random_normal", trainable=True)
+        self.coeff = self.add_weight('coeff', shape=(2, 1), initializer="random_normal", trainable=True, )
 
     def call(self, inputs):
-        return self.a * inputs * inputs + self.b * inputs
-
-    def get_config(self):
-        config = {'a': float(self.a), 'b': float(self.b)}
-        base_config = super(Layer, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
+        return self.coeff[1] * K.square(inputs) + self.coeff[0] * inputs
 
     def compute_output_shape(self, input_shape):
         return input_shape
+
+
+# Taken from https://stackoverflow.com/a/600612/119527
+def mkdir_p(path):
+    try:
+        os.makedirs(path)
+    except OSError as exc:  # Python >2.5
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+
+# Taken from https://stackoverflow.com/a/23794010/2227414
+def safe_open_w(path):
+    ''' Open "path" for writing, creating any parent directories as needed.
+    '''
+    mkdir_p(os.path.dirname(path))
+    return open(path, 'w')
 
 
 def main():
@@ -103,7 +117,8 @@ def main():
     add_activation_layer(model)
     model.add(pool(pool_size=(2, 2), padding='same'))
 
-    model.add(layers.Conv2D(filters=64, kernel_size=(5, 5), padding='same', use_bias=True, activation=internal_activation))
+    model.add(
+        layers.Conv2D(filters=64, kernel_size=(5, 5), padding='same', use_bias=True, activation=internal_activation))
     add_activation_layer(model)
     model.add(pool(pool_size=(2, 2), padding='same'))
 
@@ -142,6 +157,17 @@ def main():
     score = model.evaluate(test['features'], utils.to_categorical(test['labels']))
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
+
+    for idx, layer in enumerate(model.layers):
+        prefix = './model/' + "{:02d}_".format(idx) + layer.get_config()['name']
+        with safe_open_w(prefix + '_config.txt') as config:
+            config.write(str(layer.get_config()))
+        if layer.get_weights():
+            with safe_open_w(prefix + '_weights.txt') as weights:
+                weights.write(str(layer.get_weights()[0]))
+        if len(layer.get_weights()) > 1:
+            with safe_open_w(prefix + '_biases.txt') as biases:
+                biases.write(str(layer.get_weights()[1]))
 
 
 if __name__ == '__main__':
