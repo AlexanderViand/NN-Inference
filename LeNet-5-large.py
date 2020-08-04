@@ -9,6 +9,8 @@ import tensorflow.keras.layers as layers
 from tensorflow.keras import utils
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.layers import Layer
+from tensorflow.keras import backend as K
 from sklearn.model_selection import train_test_split
 
 # CVDF mirror of http://yann.lecun.com/exdb/mnist/
@@ -47,6 +49,26 @@ def read_mnist(images_path: str, labels_path: str):
     return features, labels
 
 
+class PolyAct(Layer):
+    def __init__(self, **kwargs):
+        super(PolyAct, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        self.a = self.add_weight('a', shape=(1, 1), initializer="random_normal", trainable=True, )
+        self.b = self.add_weight('b', shape=(1, 1), initializer="random_normal", trainable=True)
+
+    def call(self, inputs):
+        return self.a * inputs * inputs + self.b * inputs
+
+    def get_config(self):
+        config = {'a': float(self.a), 'b': float(self.b)}
+        base_config = super(Layer, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
 def main():
     # Get the data.
     train_data_filename = maybe_download('train-images-idx3-ubyte.gz')
@@ -65,42 +87,41 @@ def main():
     # Define the model
     model = tf.keras.Sequential()
 
-    model.add(layers.Conv2D(filters=32, kernel_size=(5, 5), activation='relu', input_shape=(28, 28, 1), padding='same',
-                            use_bias=True, kernel_regularizer=tf.keras.regularizers.l2(0.0001),
-                            bias_regularizer=tf.keras.regularizers.l2(0.0001)))
-    model.add(layers.MaxPool2D(pool_size=(2, 2), padding='same'))
+    approx = True
 
-    model.add(layers.Conv2D(filters=64, kernel_size=(5, 5), activation='relu', padding='same', use_bias=True,
-                            kernel_regularizer=tf.keras.regularizers.l2(0.0001),
-                            bias_regularizer=tf.keras.regularizers.l2(0.0001)))
-    model.add(layers.MaxPool2D(pool_size=(2, 2), padding='same'))
+    if approx:
+        internal_activation = None
+        add_activation_layer = lambda x: x.add(PolyAct())
+        pool = layers.AvgPool2D
+    else:
+        internal_activation = 'relu'
+        add_activation_layer = lambda _: None
+        pool = layers.MaxPool2D
+
+    model.add(layers.Conv2D(filters=32, kernel_size=(5, 5), input_shape=(28, 28, 1), padding='same',
+                            use_bias=True, activation=internal_activation))
+    add_activation_layer(model)
+    model.add(pool(pool_size=(2, 2), padding='same'))
+
+    model.add(layers.Conv2D(filters=64, kernel_size=(5, 5), padding='same', use_bias=True, activation=internal_activation))
+    add_activation_layer(model)
+    model.add(pool(pool_size=(2, 2), padding='same'))
 
     model.add(layers.Flatten())
 
-    model.add(layers.Dense(units=512, activation='relu', use_bias=True,
-                           kernel_regularizer=tf.keras.regularizers.l2(0.0001),
-                           bias_regularizer=tf.keras.regularizers.l2(0.0001)))
+    model.add(layers.Dense(units=512, use_bias=True, activation=internal_activation))
+    add_activation_layer(model)
 
     model.add(layers.Dropout(rate=0.5))
 
-    model.add(
-        layers.Dense(units=10, activation='softmax', use_bias=True,
-                     kernel_regularizer=tf.keras.regularizers.l2(0.0001),
-                     bias_regularizer=tf.keras.regularizers.l2(0.0001)))
+    # TODO: How did EVA/CHET handle the final softmax?
+    model.add(layers.Dense(units=10, activation='softmax', use_bias=True))
 
     # Model Summary
     model.summary()
 
-    # Learning Rate Decay
-    lr = tf.keras.optimizers.schedules.ExponentialDecay(
-        0.01,  # Base learning rate.
-        decay_steps=train['features'].shape[0],
-        decay_rate=0.95,
-        staircase=True)
-
     # Compile Model
-    model.compile(loss=tf.keras.losses.categorical_crossentropy, optimizer=tf.keras.optimizers.SGD(learning_rate=lr),
-                  metrics=['accuracy'])
+    model.compile(loss=tf.keras.losses.categorical_crossentropy, optimizer='ADAM', metrics=['accuracy'])
 
     x_train, y_train = train['features'], utils.to_categorical(train['labels'])
     x_validation, y_validation = validation['features'], utils.to_categorical(validation['labels'])
@@ -114,10 +135,9 @@ def main():
     steps_per_epoch = x_train.shape[0] // BATCH_SIZE
     validation_steps = x_validation.shape[0] // BATCH_SIZE
 
-    tensorboard = TensorBoard(log_dir="logs\\{}".format(time()))
     model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=NUM_EPOCHS,
                         validation_data=validation_generator, validation_steps=validation_steps,
-                        shuffle=True, callbacks=[tensorboard])
+                        shuffle=True, callbacks=[TensorBoard(log_dir="logs\\{}".format(time()))])
 
     score = model.evaluate(test['features'], utils.to_categorical(test['labels']))
     print('Test loss:', score[0])
