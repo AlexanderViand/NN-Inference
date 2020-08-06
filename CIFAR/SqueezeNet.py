@@ -14,7 +14,7 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 from sklearn.model_selection import train_test_split
 
 BATCH_SIZE = 128
-NUM_EPOCHS = 10
+NUM_EPOCHS = 1
 approx = False
 
 
@@ -184,9 +184,14 @@ def main():
                         shuffle=True, callbacks=[checkpoint, TensorBoard(log_dir="logs\\{}".format(time()))])
 
     # Apply normalization learned from training data to test data
-    train_generator_.standardize(test['features'].astype('float32'))
+    test_datagen = ImageDataGenerator(
+        featurewise_center=True,
+        featurewise_std_normalization=True)
+    test_datagen.fit(x_train)
 
-    score = model.evaluate(test['features'], utils.to_categorical(test['labels']))
+    test_set = test_datagen.flow(test['features'], utils.to_categorical(test['labels']))
+
+    score = model.evaluate(test_set)
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
 
