@@ -46,6 +46,7 @@ else:
 def fire_module(x, s1x1, e1x1, e3x3, name):
     # Squeeze layer
     squeeze = layers.Conv2D(s1x1, (1, 1), activation=internal_activation, padding='valid',
+                            use_bias=True,
                             kernel_initializer='glorot_uniform',
                             name=name + 's1x1')(x)
     squeeze_act = add_activation_layer(squeeze)
@@ -55,12 +56,14 @@ def fire_module(x, s1x1, e1x1, e3x3, name):
 
     # Expand 1x1 layer
     expand1x1 = layers.Conv2D(e1x1, (1, 1), activation=internal_activation, padding='valid',
+                              use_bias=True,
                               kernel_initializer='glorot_uniform',
                               name=name + 'e1x1')(squeeze_bn)
     expand1x1_act = add_activation_layer(expand1x1)
 
     # Expand 3x3 layer
     expand3x3 = layers.Conv2D(e3x3, (3, 3), activation=internal_activation, padding='same',
+                              use_bias=True,
                               kernel_initializer='glorot_uniform',
                               name=name + 'e3x3')(squeeze_bn)
     expand3x3_act = add_activation_layer(expand3x3)
@@ -120,10 +123,10 @@ def main():
     pool2 = pool(pool_size=(3, 3), strides=(2, 2), padding='same')(fire3)
 
     # FIRE
-    fire4 = fire_module(pool2, 16, 64, 64, "Fire4")
+    fire4 = fire_module(pool2, 32, 128, 128, "Fire4")
 
     # FIRE
-    fire5 = fire_module(fire4, 16, 64, 64, "Fire5")
+    fire5 = fire_module(fire4, 32, 128, 128, "Fire5")
 
     # CONV
     conv2 = layers.Conv2D(filters=10, kernel_size=(1, 1), strides=(1, 1), padding='same', use_bias=True,
