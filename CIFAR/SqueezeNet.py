@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 
 BATCH_SIZE = 128
 NUM_EPOCHS = 1000
+approx = True
 
 
 class PolyAct(Layer):
@@ -30,25 +31,41 @@ class PolyAct(Layer):
         return input_shape
 
 
+if approx:
+    internal_activation = None
+    add_activation_layer = lambda x: PolyAct()(x)
+    pool = layers.AvgPool2D
+else:
+    internal_activation = 'relu'
+    add_activation_layer = lambda x: x
+    pool = layers.MaxPool2D
+
+
 # From https://github.com/toxtli/SqueezeNet-CIFAR10-keras/
 def fire_module(x, s1x1, e1x1, e3x3, name):
     # Squeeze layer
-    squeeze = layers.Conv2D(s1x1, (1, 1), activation='relu', padding='valid', kernel_initializer='glorot_uniform',
+    squeeze = layers.Conv2D(s1x1, (1, 1), activation=internal_activation, padding='valid',
+                            kernel_initializer='glorot_uniform',
                             name=name + 's1x1')(x)
-    squeeze_bn = layers.BatchNormalization(name=name + 'sbn')(squeeze)
+    squeeze_act = add_activation_layer(squeeze)
+    squeeze_bn = layers.BatchNormalization(name=name + 'sbn')(squeeze_act)
 
     # Expand 1x1 layer and 3x3 layer are parallel
 
     # Expand 1x1 layer
-    expand1x1 = layers.Conv2D(e1x1, (1, 1), activation='relu', padding='valid', kernel_initializer='glorot_uniform',
+    expand1x1 = layers.Conv2D(e1x1, (1, 1), activation=internal_activation, padding='valid',
+                              kernel_initializer='glorot_uniform',
                               name=name + 'e1x1')(squeeze_bn)
+    expand1x1_act = add_activation_layer(expand1x1)
 
     # Expand 3x3 layer
-    expand3x3 = layers.Conv2D(e3x3, (3, 3), activation='relu', padding='same', kernel_initializer='glorot_uniform',
+    expand3x3 = layers.Conv2D(e3x3, (3, 3), activation=internal_activation, padding='same',
+                              kernel_initializer='glorot_uniform',
                               name=name + 'e3x3')(squeeze_bn)
+    expand3x3_act = add_activation_layer(expand3x3)
 
     # Concatenate expand1x1 and expand 3x3 at filters
-    output = layers.Concatenate(axis=3, name=name)([expand1x1, expand3x3])
+    output = layers.Concatenate(axis=3, name=name)([expand1x1_act, expand3x3_act])
 
     return output
 
@@ -83,17 +100,6 @@ def main():
 
     # Define the model
     inputs = layers.Input([32, 32, 3])
-
-    approx = False
-
-    if approx:
-        internal_activation = None
-        add_activation_layer = lambda x: PolyAct()(x)
-        pool = layers.AvgPool2D
-    else:
-        internal_activation = 'relu'
-        add_activation_layer = lambda x: x
-        pool = layers.MaxPool2D
 
     # CONV
     conv1 = layers.Conv2D(filters=64, kernel_size=(3, 3), strides=(1, 1), input_shape=(32, 32, 3), padding='same',
