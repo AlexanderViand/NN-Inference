@@ -17,6 +17,9 @@ BATCH_SIZE = 128
 NUM_EPOCHS = 1
 approx = False
 
+# For reference:
+# The non-approx version achieves ~70% after 10 epochs
+
 
 class PolyAct(Layer):
     def __init__(self, **kwargs):
