@@ -13,7 +13,7 @@ from tensorflow.keras import backend as K
 from sklearn.model_selection import train_test_split
 
 BATCH_SIZE = 128
-NUM_EPOCHS = 100
+NUM_EPOCHS = 1000
 
 
 class PolyAct(Layer):
