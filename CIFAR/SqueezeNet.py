@@ -1,11 +1,8 @@
-import gzip
 import os
 from time import time
 import os.path
 import errno
 
-from six.moves import urllib
-import numpy as np
 import tensorflow.compat.v1 as tf
 import tensorflow.keras.layers as layers
 from tensorflow.keras import utils
@@ -15,40 +12,8 @@ from tensorflow.keras.layers import Layer
 from tensorflow.keras import backend as K
 from sklearn.model_selection import train_test_split
 
-# CVDF mirror of http://yann.lecun.com/exdb/mnist/
-SOURCE_URL = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
-WORK_DIRECTORY = 'data'
-BATCH_SIZE = 64
-NUM_EPOCHS = 10
-
-
-def maybe_download(filename):
-    """Download the data from Yann's website, unless it's already here."""
-    if not tf.gfile.Exists(WORK_DIRECTORY):
-        tf.gfile.MakeDirs(WORK_DIRECTORY)
-    filepath = os.path.join(WORK_DIRECTORY, filename)
-    if not tf.gfile.Exists(filepath):
-        filepath, _ = urllib.request.urlretrieve(SOURCE_URL + filename, filepath)
-        with tf.gfile.GFile(filepath) as f:
-            size = f.size()
-        print('Successfully downloaded', filename, size, 'bytes.')
-    return filepath
-
-
-def read_mnist(images_path: str, labels_path: str):
-    with gzip.open(labels_path, 'rb') as labelsFile:
-        labels = np.frombuffer(labelsFile.read(), dtype=np.uint8, offset=8)
-
-    with gzip.open(images_path, 'rb') as imagesFile:
-        length = len(labels)
-        # Load flat 28x28 px images (784 px), and convert them to 28x28 px
-        features = np.frombuffer(imagesFile.read(), dtype=np.uint8, offset=16) \
-            .reshape(length, 784) \
-            .reshape(length, 28, 28, 1)
-        # Normalize Data to [-0.5, 0.5]
-        features = features / 255 - 0.5
-
-    return features, labels
+BATCH_SIZE = 128
+NUM_EPOCHS = 100
 
 
 class PolyAct(Layer):
@@ -65,6 +30,29 @@ class PolyAct(Layer):
         return input_shape
 
 
+# From https://github.com/toxtli/SqueezeNet-CIFAR10-keras/
+def fire_module(x, s1x1, e1x1, e3x3, name):
+    # Squeeze layer
+    squeeze = layers.Conv2D(s1x1, (1, 1), activation='relu', padding='valid', kernel_initializer='glorot_uniform',
+                            name=name + 's1x1')(x)
+    squeeze_bn = layers.BatchNormalization(name=name + 'sbn')(squeeze)
+
+    # Expand 1x1 layer and 3x3 layer are parallel
+
+    # Expand 1x1 layer
+    expand1x1 = layers.Conv2D(e1x1, (1, 1), activation='relu', padding='valid', kernel_initializer='glorot_uniform',
+                              name=name + 'e1x1')(squeeze_bn)
+
+    # Expand 3x3 layer
+    expand3x3 = layers.Conv2D(e3x3, (3, 3), activation='relu', padding='same', kernel_initializer='glorot_uniform',
+                              name=name + 'e3x3')(squeeze_bn)
+
+    # Concatenate expand1x1 and expand 3x3 at filters
+    output = layers.Concatenate(axis=3, name=name)([expand1x1, expand3x3])
+
+    return output
+
+
 # Taken from https://stackoverflow.com/a/600612/119527
 def mkdir_p(path):
     try:
@@ -75,6 +63,7 @@ def mkdir_p(path):
         else:
             raise
 
+
 # Taken from https://stackoverflow.com/a/23794010/2227414
 def safe_open_w(path):
     ''' Open "path" for writing, creating any parent directories as needed.
@@ -84,53 +73,63 @@ def safe_open_w(path):
 
 
 def main():
-    # Get the data.
-    train_data_filename = maybe_download('train-images-idx3-ubyte.gz')
-    train_labels_filename = maybe_download('train-labels-idx1-ubyte.gz')
-    test_data_filename = maybe_download('t10k-images-idx3-ubyte.gz')
-    test_labels_filename = maybe_download('t10k-labels-idx1-ubyte.gz')
-
-    # Extract the data
+    # Load CIFAR-10 dataset. These are just regular numpy arrays.
     train, test, validation = {}, {}, {}
-    train['features'], train['labels'] = read_mnist('data/train-images-idx3-ubyte.gz',
-                                                    'data/train-labels-idx1-ubyte.gz')
-    test['features'], test['labels'] = read_mnist('data/t10k-images-idx3-ubyte.gz', 'data/t10k-labels-idx1-ubyte.gz')
+    (train['features'], train['labels']), (test['features'], test['labels']) = tf.keras.datasets.cifar10.load_data()
+
+    # Create Validation set
     train['features'], validation['features'], train['labels'], validation['labels'] = train_test_split(
         train['features'], train['labels'], test_size=0.2, random_state=0)
 
     # Define the model
-    model = tf.keras.Sequential()
+    inputs = layers.Input([32, 32, 3])
 
-    approx = True
+    approx = False
 
     if approx:
         internal_activation = None
-        add_activation_layer = lambda x: x.add(PolyAct())
+        add_activation_layer = lambda x: PolyAct()(x)
         pool = layers.AvgPool2D
     else:
         internal_activation = 'relu'
-        add_activation_layer = lambda _: None
+        add_activation_layer = lambda x: x
         pool = layers.MaxPool2D
 
-    model.add(layers.Conv2D(filters=32, kernel_size=(5, 5), input_shape=(28, 28, 1), padding='same',
-                            use_bias=True, activation=internal_activation))
-    add_activation_layer(model)
-    model.add(pool(pool_size=(2, 2), padding='same'))
+    # CONV
+    conv1 = layers.Conv2D(filters=64, kernel_size=(3, 3), strides=(1, 1), input_shape=(32, 32, 3), padding='same',
+                          use_bias=True, activation=internal_activation)(inputs)
+    conv1act = add_activation_layer(conv1)
 
-    model.add(
-        layers.Conv2D(filters=64, kernel_size=(5, 5), padding='same', use_bias=True, activation=internal_activation))
-    add_activation_layer(model)
-    model.add(pool(pool_size=(2, 2), padding='same'))
+    # POOL
+    pool1 = pool(pool_size=(3, 3), strides=(2, 2), padding='same')(conv1act)
 
-    model.add(layers.Flatten())
+    # FIRE
+    fire2 = fire_module(pool1, 16, 64, 64, "Fire2")
 
-    model.add(layers.Dense(units=512, use_bias=True, activation=internal_activation))
-    add_activation_layer(model)
+    # FIRE
+    fire3 = fire_module(fire2, 16, 64, 64, "Fire3")
 
-    model.add(layers.Dropout(rate=0.5))
+    # POOL
+    pool2 = pool(pool_size=(3, 3), strides=(2, 2), padding='same')(fire3)
 
-    # TODO: How did EVA/CHET handle the final softmax?
-    model.add(layers.Dense(units=10, activation='softmax', use_bias=True))
+    # FIRE
+    fire4 = fire_module(pool2, 16, 64, 64, "Fire4")
+
+    # FIRE
+    fire5 = fire_module(pool2, 16, 64, 64, "Fire5")
+
+    # CONV
+    conv2 = layers.Conv2D(filters=10, kernel_size=(1, 1), strides=(1, 1), padding='same', use_bias=True,
+                          activation=internal_activation)(fire5)
+    conv2act = add_activation_layer(conv2)
+
+    # AVERAGE POOL (always AVG)
+    avgs = layers.GlobalAveragePooling2D()(conv2act)
+
+    # SOFTMAX
+    predictions = layers.Softmax()(avgs)
+
+    model = tf.keras.Model(inputs=inputs, outputs=predictions)
 
     # Model Summary
     model.summary()
