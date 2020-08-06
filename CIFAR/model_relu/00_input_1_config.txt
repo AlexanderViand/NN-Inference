@@ -1,0 +1,1 @@
+{'batch_input_shape': (None, 32, 32, 3), 'dtype': 'float32', 'sparse': False, 'ragged': False, 'name': 'input_1'}
