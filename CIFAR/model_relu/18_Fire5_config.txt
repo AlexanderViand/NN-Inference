@@ -1,1 +1,0 @@
-{'name': 'Fire5', 'trainable': True, 'dtype': 'float32', 'axis': 3}
