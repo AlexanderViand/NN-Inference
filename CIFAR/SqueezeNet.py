@@ -123,7 +123,7 @@ def main():
     fire4 = fire_module(pool2, 16, 64, 64, "Fire4")
 
     # FIRE
-    fire5 = fire_module(pool2, 16, 64, 64, "Fire5")
+    fire5 = fire_module(fire4, 16, 64, 64, "Fire5")
 
     # CONV
     conv2 = layers.Conv2D(filters=10, kernel_size=(1, 1), strides=(1, 1), padding='same', use_bias=True,
