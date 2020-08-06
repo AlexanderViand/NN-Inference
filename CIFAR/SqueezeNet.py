@@ -10,10 +10,11 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.callbacks import TensorBoard
 from tensorflow.keras.layers import Layer
 from tensorflow.keras import backend as K
+from tensorflow.keras.callbacks import ModelCheckpoint
 from sklearn.model_selection import train_test_split
 
 BATCH_SIZE = 128
-NUM_EPOCHS = 1000
+NUM_EPOCHS = 100
 approx = True
 
 
@@ -170,9 +171,12 @@ def main():
     steps_per_epoch = x_train.shape[0] // BATCH_SIZE
     validation_steps = x_validation.shape[0] // BATCH_SIZE
 
+    checkpoint = ModelCheckpoint("best_model.hdf5", monitor='loss', verbose=1,
+                                 save_best_only=True, mode='auto', period=5)
+
     model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=NUM_EPOCHS,
                         validation_data=validation_generator, validation_steps=validation_steps,
-                        shuffle=True, callbacks=[TensorBoard(log_dir="logs\\{}".format(time()))])
+                        shuffle=True, callbacks=[checkpoint, TensorBoard(log_dir="logs\\{}".format(time()))])
 
     score = model.evaluate(test['features'], utils.to_categorical(test['labels']))
     print('Test loss:', score[0])
