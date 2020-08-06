@@ -153,12 +153,16 @@ def main():
         width_shift_range=0.1,
         height_shift_range=0.1,
         horizontal_flip=True
-    ).flow(x_train, y_train, batch_size=BATCH_SIZE)
+    )
+    train_generator.fit(x_train)
+    train_generator = train_generator.flow(x_train, y_train, batch_size=BATCH_SIZE)
 
     validation_generator = ImageDataGenerator(
         featurewise_center=True,
         featurewise_std_normalization=True
-    ).flow(x_validation, y_validation, batch_size=BATCH_SIZE)
+    )
+    validation_generator.fit(x_validation)
+    validation_generator = validation_generator.flow(x_validation, y_validation, batch_size=BATCH_SIZE)
 
     print('# of training images:', train['features'].shape[0])
     print('# of validation images:', validation['features'].shape[0])
