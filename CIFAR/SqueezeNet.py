@@ -174,10 +174,16 @@ def main():
     checkpoint = ModelCheckpoint("best_model.hdf5", monitor='loss', verbose=1,
                                  save_best_only=True, mode='auto', period=5)
 
+    model.load_weights(checkpoint)
+
     model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=NUM_EPOCHS,
                         validation_data=validation_generator, validation_steps=validation_steps,
                         shuffle=True, callbacks=[checkpoint, TensorBoard(log_dir="logs\\{}".format(time()))])
 
+    for i in range(len(x_test)):
+        # this is what you are looking for
+        x_test[i] = datagen.standardize(x_test[i])
+        
     score = model.evaluate(test['features'], utils.to_categorical(test['labels']))
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
