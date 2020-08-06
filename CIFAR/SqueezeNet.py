@@ -13,7 +13,7 @@ from tensorflow.keras import backend as K
 from sklearn.model_selection import train_test_split
 
 BATCH_SIZE = 128
-NUM_EPOCHS = 1000
+NUM_EPOCHS = 100
 
 
 class PolyAct(Layer):
@@ -140,8 +140,19 @@ def main():
     x_train, y_train = train['features'], utils.to_categorical(train['labels'])
     x_validation, y_validation = validation['features'], utils.to_categorical(validation['labels'])
 
-    train_generator = ImageDataGenerator().flow(x_train, y_train, batch_size=BATCH_SIZE)
-    validation_generator = ImageDataGenerator().flow(x_validation, y_validation, batch_size=BATCH_SIZE)
+    train_generator = ImageDataGenerator(
+        featurewise_center=True,
+        featurewise_std_normalization=True,
+        rotation_range=15,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        horizontal_flip=True
+    ).flow(x_train, y_train, batch_size=BATCH_SIZE)
+
+    validation_generator = ImageDataGenerator(
+        featurewise_center=True,
+        featurewise_std_normalization=True
+    ).flow(x_validation, y_validation, batch_size=BATCH_SIZE)
 
     print('# of training images:', train['features'].shape[0])
     print('# of validation images:', validation['features'].shape[0])
