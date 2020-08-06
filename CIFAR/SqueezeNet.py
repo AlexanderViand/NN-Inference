@@ -14,8 +14,8 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 from sklearn.model_selection import train_test_split
 
 BATCH_SIZE = 128
-NUM_EPOCHS = 100
-approx = True
+NUM_EPOCHS = 10
+approx = False
 
 
 class PolyAct(Layer):
@@ -147,7 +147,7 @@ def main():
     x_train, y_train = train['features'], utils.to_categorical(train['labels'])
     x_validation, y_validation = validation['features'], utils.to_categorical(validation['labels'])
 
-    train_generator = ImageDataGenerator(
+    train_generator_ = ImageDataGenerator(
         featurewise_center=True,
         featurewise_std_normalization=True,
         rotation_range=15,
@@ -155,8 +155,8 @@ def main():
         height_shift_range=0.1,
         horizontal_flip=True
     )
-    train_generator.fit(x_train)
-    train_generator = train_generator.flow(x_train, y_train, batch_size=BATCH_SIZE)
+    train_generator_.fit(x_train)
+    train_generator = train_generator_.flow(x_train, y_train, batch_size=BATCH_SIZE)
 
     validation_generator = ImageDataGenerator(
         featurewise_center=True,
@@ -174,16 +174,15 @@ def main():
     checkpoint = ModelCheckpoint("best_model.hdf5", monitor='loss', verbose=1,
                                  save_best_only=True, mode='auto', period=5)
 
-    model.load_weights(checkpoint)
+    # model.load_weights("best_model.hdf5")
 
     model.fit_generator(train_generator, steps_per_epoch=steps_per_epoch, epochs=NUM_EPOCHS,
                         validation_data=validation_generator, validation_steps=validation_steps,
                         shuffle=True, callbacks=[checkpoint, TensorBoard(log_dir="logs\\{}".format(time()))])
 
-    for i in range(len(x_test)):
-        # this is what you are looking for
-        x_test[i] = datagen.standardize(x_test[i])
-        
+    # Apply normalization learned from training data to test data
+    train_generator_.standardize(test['features'].astype('float32'))
+
     score = model.evaluate(test['features'], utils.to_categorical(test['labels']))
     print('Test loss:', score[0])
     print('Test accuracy:', score[1])
