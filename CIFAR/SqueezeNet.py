@@ -14,8 +14,9 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 from sklearn.model_selection import train_test_split
 
 BATCH_SIZE = 128
-NUM_EPOCHS = 1
-approx = False
+NUM_EPOCHS = 100
+approx = True
+
 
 # For reference:
 # The non-approx version achieves ~70% after 10 epochs
